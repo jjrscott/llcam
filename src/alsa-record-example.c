@@ -17,21 +17,43 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <alsa/asoundlib.h>
-	      
+#include <pthread.h>
+
+void *print_message_function( void *ptr );
+
 main (int argc, char *argv[])
+{
+     pthread_t thread1;
+     int  iret1, iret2;
+
+    /* Create independent threads each of which will execute function */
+
+     iret1 = pthread_create( &thread1, NULL, print_message_function, (void*) argv[1]);
+     if(iret1)
+     {
+         fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
+         exit(EXIT_FAILURE);
+     }
+
+     pthread_join( thread1, NULL);
+
+     exit(EXIT_SUCCESS);
+}
+	      
+void *print_message_function(void *name)
 {
   int i;
   int err;
   char *buffer;
-  int buffer_frames = 128;
+  int buffer_frames = 4410;
   unsigned int rate = 44100;
   snd_pcm_t *capture_handle;
   snd_pcm_hw_params_t *hw_params;
 	snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
 
-  if ((err = snd_pcm_open (&capture_handle, argv[1], SND_PCM_STREAM_CAPTURE, 0)) < 0) {
+  if ((err = snd_pcm_open (&capture_handle, name, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
     fprintf (stderr, "cannot open audio device %s (%s)\n", 
-             argv[1],
+             name,
              snd_strerror (err));
     exit (1);
   }
@@ -78,7 +100,7 @@ main (int argc, char *argv[])
 	
   fprintf(stdout, "hw_params rate setted\n");
 
-  if ((err = snd_pcm_hw_params_set_channels (capture_handle, hw_params, 2)) < 0) {
+  if ((err = snd_pcm_hw_params_set_channels (capture_handle, hw_params, 1)) < 0) {
     fprintf (stderr, "cannot set channel count (%s)\n",
              snd_strerror (err));
     exit (1);
@@ -106,7 +128,7 @@ main (int argc, char *argv[])
 
   fprintf(stdout, "audio interface prepared\n");
 
-  buffer = malloc(128 * snd_pcm_format_width(format) / 8 * 2);
+  buffer = malloc(buffer_frames * snd_pcm_format_width(format) / 8 * 2);
 
   fprintf(stdout, "buffer allocated\n");
 
@@ -116,7 +138,7 @@ main (int argc, char *argv[])
                err, snd_strerror (err));
       exit (1);
     }
-    fprintf(stdout, "read %d done\n", i);
+    fprintf(stdout, "read %d done (%d)\n", i, err);
   }
 
   free(buffer);
