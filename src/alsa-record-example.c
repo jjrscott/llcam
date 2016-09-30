@@ -19,28 +19,42 @@
 #include <alsa/asoundlib.h>
 #include <pthread.h>
 
-void *print_message_function( void *ptr );
+void *background_audio_loop( void *ptr );
 
-main (int argc, char *argv[])
+pthread_t start_background_audio_loop( void *ptr );
+
+void main (int argc, char *argv[])
 {
+     pthread_t thread1;
+
+	 thread1 = start_background_audio_loop((void*) argv[1]);
+
+     pthread_join( thread1, NULL);
+
+
+     exit(EXIT_SUCCESS);
+
+}
+
+pthread_t start_background_audio_loop( void *ptr ) {
      pthread_t thread1;
      int  iret1, iret2;
 
     /* Create independent threads each of which will execute function */
 
-     iret1 = pthread_create( &thread1, NULL, print_message_function, (void*) argv[1]);
+     iret1 = pthread_create( &thread1, NULL, background_audio_loop, ptr);
      if(iret1)
      {
          fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
          exit(EXIT_FAILURE);
      }
 
-     pthread_join( thread1, NULL);
-
-     exit(EXIT_SUCCESS);
+	return thread1;
 }
+
+
 	      
-void *print_message_function(void *name)
+void *background_audio_loop(void *name)
 {
   int i;
   int err;

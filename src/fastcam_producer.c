@@ -18,6 +18,9 @@
 #include <unistd.h>
 #include <string.h>
 
+#include <alsa/asoundlib.h>
+#include <pthread.h>
+
 #include "bcm_host.h"
 #include "interface/vcos/vcos.h"
 
@@ -67,6 +70,10 @@ typedef struct {
     struct RingBuffer* ring_buffer;
    	size_t ring_buffer_seq;
 } PORT_USERDATA;
+
+void *background_audio_loop( void * );
+
+pthread_t start_background_audio_loop( PORT_USERDATA * );
 
 static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
 //     fprintf(stderr, "> %s\n", __func__);
@@ -465,6 +472,8 @@ int main(int argc, char** argv) {
         return -1;
     }
     
+    start_background_audio_loop(&userdata);
+    
 
 
     while (1) {
@@ -472,4 +481,133 @@ int main(int argc, char** argv) {
     }
 
     return 0;
+}
+
+pthread_t start_background_audio_loop(PORT_USERDATA *userdata) {
+     pthread_t thread1;
+     int  iret1, iret2;
+
+    /* Create independent threads each of which will execute function */
+
+     iret1 = pthread_create( &thread1, NULL, background_audio_loop, userdata);
+     if(iret1)
+     {
+         fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
+         exit(EXIT_FAILURE);
+     }
+
+	return thread1;
+}
+
+void *background_audio_loop(void *context)
+{
+  PORT_USERDATA *userdata = context;
+
+  int i;
+  int err;
+  char *buffer;
+  int buffer_frames = 4410;
+  unsigned int rate = 44100;
+  snd_pcm_t *capture_handle;
+  snd_pcm_hw_params_t *hw_params;
+	snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
+	
+  char * name = "plughw:1";
+
+  if ((err = snd_pcm_open (&capture_handle, name, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
+    fprintf (stderr, "cannot open audio device %s (%s)\n", 
+             name,
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "audio interface opened\n");
+		   
+  if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
+    fprintf (stderr, "cannot allocate hardware parameter structure (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "hw_params allocated\n");
+				 
+  if ((err = snd_pcm_hw_params_any (capture_handle, hw_params)) < 0) {
+    fprintf (stderr, "cannot initialize hardware parameter structure (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "hw_params initialized\n");
+	
+  if ((err = snd_pcm_hw_params_set_access (capture_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+    fprintf (stderr, "cannot set access type (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "hw_params access setted\n");
+	
+  if ((err = snd_pcm_hw_params_set_format (capture_handle, hw_params, format)) < 0) {
+    fprintf (stderr, "cannot set sample format (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "hw_params format setted\n");
+	
+  if ((err = snd_pcm_hw_params_set_rate_near (capture_handle, hw_params, &rate, 0)) < 0) {
+    fprintf (stderr, "cannot set sample rate (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+	
+  fprintf(stdout, "hw_params rate setted\n");
+
+  if ((err = snd_pcm_hw_params_set_channels (capture_handle, hw_params, 1)) < 0) {
+    fprintf (stderr, "cannot set channel count (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "hw_params channels setted\n");
+	
+  if ((err = snd_pcm_hw_params (capture_handle, hw_params)) < 0) {
+    fprintf (stderr, "cannot set parameters (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "hw_params setted\n");
+	
+  snd_pcm_hw_params_free (hw_params);
+
+  fprintf(stdout, "hw_params freed\n");
+	
+  if ((err = snd_pcm_prepare (capture_handle)) < 0) {
+    fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
+             snd_strerror (err));
+    exit (1);
+  }
+
+  fprintf(stdout, "audio interface prepared\n");
+
+  buffer = malloc(buffer_frames * snd_pcm_format_width(format) / 8 * 2);
+
+  fprintf(stdout, "buffer allocated\n");
+
+  for (i = 0; i < 10; ++i) {
+    if ((err = snd_pcm_readi (capture_handle, buffer, buffer_frames)) != buffer_frames) {
+      fprintf (stderr, "read from audio interface failed (%s)\n",
+               err, snd_strerror (err));
+      exit (1);
+    }
+    fprintf(stdout, "read %d done (%d)\n", i, err);
+  }
+
+  free(buffer);
+
+  fprintf(stdout, "buffer freed\n");
+	
+  snd_pcm_close (capture_handle);
+  fprintf(stdout, "audio interface closed\n");
 }
