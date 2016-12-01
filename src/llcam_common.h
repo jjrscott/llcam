@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#define AUDIO_SHARED_MEMORY_IDENTIFIER "/fastcam_audio"
+#define AUDIO_SHARED_MEMORY_IDENTIFIER "/llcam_audio"
 
 #define AUDIO_FRAME_COUNT 128
 #define AUDIO_FRAME_DATA_SIZE (1<<12)
@@ -28,7 +28,7 @@ struct AudioSharedMemory
     struct AudioFrame _frames[AUDIO_FRAME_COUNT];
 };
 
-#define VIDEO_SHARED_MEMORY_IDENTIFIER "/fastcam_video"
+#define VIDEO_SHARED_MEMORY_IDENTIFIER "/llcam_video"
 
 #define VIDEO_FRAME_COUNT 5
 #define VIDEO_FRAME_DATA_SIZE (1<<17)

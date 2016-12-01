@@ -1,4 +1,4 @@
-#include "fastcam_common.h"
+#include "llcam_common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,7 @@ struct WAVFileHeader {
 	uint32_t bytes_per_second;
 	uint16_t block_align;
 	uint16_t bits_per_sample;
-	char _opaque1[8];
+	char _opaque1[8var \2 : \1!];
 };
 
 struct AUFileHeader {

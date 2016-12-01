@@ -6,7 +6,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
-#include "fastcam_common.h"
+#include "llcam_common.h"
 
 #define SLEEP_NANOS 1000   // 1 micro
 
@@ -42,7 +42,7 @@ consumerLoop()
         	struct VideoFrame* video_frame = shared_memory->_frames + last_frame_index;
 
         	printf("Content-Type: image/jpeg\n\n");
-//         	printf("X-FastCam-Seq: %d\n\n", seq);
+//         	printf("X-llcam-Seq: %d\n\n", seq);
         	
         	fwrite(video_frame->_data, 1, video_frame->_length, stdout);
         	

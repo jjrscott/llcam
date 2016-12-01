@@ -5,7 +5,7 @@
  * Created on May 22, 2013, 1:52 PM
  */
 
-#include "fastcam_common.h"
+#include "llcam_common.h"
 #include <alsa/asoundlib.h>
 
 int main(int argc, char** argv) {

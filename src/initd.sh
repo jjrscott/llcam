@@ -1,29 +1,29 @@
 #!/bin/bash
-# /etc/init.d/fastcam
+# /etc/init.d/llcam
 
 ### BEGIN INIT INFO
-# Provides:          fastcam
+# Provides:          llcam
 # Required-Start:    $remote_fs $syslog
 # Required-Stop:     $remote_fs $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Example initscript
-# Description:       This service is used to manage fastcam
+# Description:       This service is used to manage llcam
 ### END INIT INFO
 
 
 case "$1" in 
     start)
-        echo "Starting fastcam"
-        fastcam_audio_producer &
-        fastcam_video_producer &
+        echo "Starting llcam"
+        llcam_audio_producer &
+        llcam_video_producer &
         ;;
     stop)
-        echo "Stopping fastcam"
-        sudo killall --signal KILL -r fastcam
+        echo "Stopping llcam"
+        sudo killall --signal KILL -r llcam
         ;;
     *)
-        echo "Usage: sudo service fastcam start|stop"
+        echo "Usage: sudo service llcam start|stop"
         exit 1
         ;;
 esac
