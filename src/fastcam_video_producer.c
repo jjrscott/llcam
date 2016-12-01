@@ -18,15 +18,14 @@
 #include <unistd.h>
 #include <string.h>
 
-#include <alsa/asoundlib.h>
-#include <pthread.h>
-
 #include "bcm_host.h"
 #include "interface/vcos/vcos.h"
 
 #include "interface/mmal/mmal.h"
 #include "interface/mmal/util/mmal_default_components.h"
 #include "interface/mmal/util/mmal_connection.h"
+
+#include "fastcam_common.h"
 
 #define MMAL_CAMERA_VIDEO_PORT 1
 #define MMAL_CAMERA_CAPTURE_PORT 2
@@ -35,24 +34,6 @@
 #define VIDEO_WIDTH 640
 #define VIDEO_HEIGHT 480
 
-#define SHM_ID "/mmap-test"
-#define FRAME_COUNT 5
-#define FRAME_DATA_SIZE (1<<17)
-
-
-struct Frame
-{
-    size_t _length;	
-    char _data[FRAME_DATA_SIZE];
-};
-
-struct RingBuffer
-{
-    size_t _wseq;
-    char _pad2[64];
-
-    struct Frame _buffer[FRAME_COUNT];
-};
 
 typedef struct {
     int width;
@@ -67,13 +48,9 @@ typedef struct {
     MMAL_POOL_T *encoder_output_pool;
     float fps;
     
-    struct RingBuffer* ring_buffer;
-   	size_t ring_buffer_seq;
+    struct VideoSharedMemory* shared_memory;
+//    	pthread_mutex_t shared_memory_mutex;
 } PORT_USERDATA;
-
-void *background_audio_loop( void * );
-
-pthread_t start_background_audio_loop( PORT_USERDATA * );
 
 static void camera_video_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER_T *buffer) {
 //     fprintf(stderr, "> %s\n", __func__);
@@ -182,17 +159,15 @@ static void encoder_output_buffer_callback(MMAL_PORT_T *port, MMAL_BUFFER_HEADER
 
 // -------------------
 
-    	userdata->ring_buffer_seq = (userdata->ring_buffer_seq + 1) % FRAME_COUNT;
-    	
-//     	fprintf(stdout, "output: %d %d\n", userdata->ring_buffer_seq, buffer->length);
+	size_t frame_index = (userdata->shared_memory->_last_frame_index + 1) % VIDEO_FRAME_COUNT;
+	
+	struct VideoFrame* video_frame = userdata->shared_memory->_frames + frame_index;
 
-    	
-    	struct Frame* ring_buffer_frame = userdata->ring_buffer->_buffer + userdata->ring_buffer_seq;
-    	
-    	ring_buffer_frame->_length = buffer->length;
-        memcpy(ring_buffer_frame->_data, buffer->data, buffer->length);
-    	
-    	userdata->ring_buffer->_wseq = userdata->ring_buffer_seq;
+	video_frame->_length = buffer->length;
+	memcpy(video_frame->_data, buffer->data, buffer->length);
+
+	userdata->shared_memory->_last_frame_index = frame_index;
+
 
 
 
@@ -421,18 +396,17 @@ int setup_encoder(PORT_USERDATA *userdata) {
 
 int setup_producer(PORT_USERDATA *userdata) {
 
-    int size = sizeof( struct RingBuffer );
+    int size = sizeof( struct VideoSharedMemory );
     umask(0);
-    int fd = shm_open( SHM_ID, O_RDWR | O_CREAT, 0666 );
+    int fd = shm_open( VIDEO_SHARED_MEMORY_IDENTIFIER, O_RDWR | O_CREAT, 0666 );
     ftruncate( fd, size+1 );
 
     // create shared memory area
-    userdata->ring_buffer = (struct RingBuffer*)mmap( 0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0 );
+    userdata->shared_memory = (struct VideoSharedMemory*)mmap( 0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0 );
     close( fd );
 
     // initialize our sequence numbers in the ring buffer
-    userdata->ring_buffer_seq = -1;
-    userdata->ring_buffer->_wseq = userdata->ring_buffer_seq;
+    userdata->shared_memory->_last_frame_index = -1;
 
     return 0;
 }
@@ -471,10 +445,6 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Error: setup encoder %x\n", status);
         return -1;
     }
-    
-    start_background_audio_loop(&userdata);
-    
-
 
     while (1) {
 		usleep(30000);
@@ -483,131 +453,3 @@ int main(int argc, char** argv) {
     return 0;
 }
 
-pthread_t start_background_audio_loop(PORT_USERDATA *userdata) {
-     pthread_t thread1;
-     int  iret1, iret2;
-
-    /* Create independent threads each of which will execute function */
-
-     iret1 = pthread_create( &thread1, NULL, background_audio_loop, userdata);
-     if(iret1)
-     {
-         fprintf(stderr,"Error - pthread_create() return code: %d\n",iret1);
-         exit(EXIT_FAILURE);
-     }
-
-	return thread1;
-}
-
-void *background_audio_loop(void *context)
-{
-  PORT_USERDATA *userdata = context;
-
-  int i;
-  int err;
-  char *buffer;
-  int buffer_frames = 4410;
-  unsigned int rate = 44100;
-  snd_pcm_t *capture_handle;
-  snd_pcm_hw_params_t *hw_params;
-	snd_pcm_format_t format = SND_PCM_FORMAT_S16_LE;
-	
-  char * name = "plughw:1";
-
-  if ((err = snd_pcm_open (&capture_handle, name, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
-    fprintf (stderr, "cannot open audio device %s (%s)\n", 
-             name,
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "audio interface opened\n");
-		   
-  if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
-    fprintf (stderr, "cannot allocate hardware parameter structure (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "hw_params allocated\n");
-				 
-  if ((err = snd_pcm_hw_params_any (capture_handle, hw_params)) < 0) {
-    fprintf (stderr, "cannot initialize hardware parameter structure (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "hw_params initialized\n");
-	
-  if ((err = snd_pcm_hw_params_set_access (capture_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
-    fprintf (stderr, "cannot set access type (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "hw_params access setted\n");
-	
-  if ((err = snd_pcm_hw_params_set_format (capture_handle, hw_params, format)) < 0) {
-    fprintf (stderr, "cannot set sample format (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "hw_params format setted\n");
-	
-  if ((err = snd_pcm_hw_params_set_rate_near (capture_handle, hw_params, &rate, 0)) < 0) {
-    fprintf (stderr, "cannot set sample rate (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-	
-  fprintf(stdout, "hw_params rate setted\n");
-
-  if ((err = snd_pcm_hw_params_set_channels (capture_handle, hw_params, 1)) < 0) {
-    fprintf (stderr, "cannot set channel count (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "hw_params channels setted\n");
-	
-  if ((err = snd_pcm_hw_params (capture_handle, hw_params)) < 0) {
-    fprintf (stderr, "cannot set parameters (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "hw_params setted\n");
-	
-  snd_pcm_hw_params_free (hw_params);
-
-  fprintf(stdout, "hw_params freed\n");
-	
-  if ((err = snd_pcm_prepare (capture_handle)) < 0) {
-    fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
-             snd_strerror (err));
-    exit (1);
-  }
-
-  fprintf(stdout, "audio interface prepared\n");
-
-  buffer = malloc(buffer_frames * snd_pcm_format_width(format) / 8 * 2);
-
-  fprintf(stdout, "buffer allocated\n");
-
-  for (i = 0; i < 10; ++i) {
-    if ((err = snd_pcm_readi (capture_handle, buffer, buffer_frames)) != buffer_frames) {
-      fprintf (stderr, "read from audio interface failed (%s)\n",
-               err, snd_strerror (err));
-      exit (1);
-    }
-    fprintf(stdout, "read %d done (%d)\n", i, err);
-  }
-
-  free(buffer);
-
-  fprintf(stdout, "buffer freed\n");
-	
-  snd_pcm_close (capture_handle);
-  fprintf(stdout, "audio interface closed\n");
-}

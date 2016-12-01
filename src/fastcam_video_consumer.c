@@ -6,41 +6,25 @@
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
+#include "fastcam_common.h"
 
 #define SLEEP_NANOS 1000   // 1 micro
-
-#define SHM_ID "/mmap-test"
-#define FRAME_COUNT 5
-#define FRAME_DATA_SIZE (1<<17)
-
-struct Frame
-{
-    size_t _length;	
-    char _data[FRAME_DATA_SIZE];
-};
-
-struct RingBuffer
-{
-    size_t _wseq;
-    char _pad2[64];
-
-    struct Frame _buffer[FRAME_COUNT];
-};
 
 void
 consumerLoop()
 {
-    int size = sizeof( struct RingBuffer );
-    int fd = shm_open( SHM_ID, O_RDWR, 0666 );
+    int size = sizeof( struct VideoSharedMemory );
+    int fd = shm_open( VIDEO_SHARED_MEMORY_IDENTIFIER, O_RDONLY, 0666 );
     if( fd == -1 ) {
         perror( "argh!!!" ); return;
     }
 
     // lookup producers shared memory area
-    struct RingBuffer* rb = (struct RingBuffer*)mmap( 0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0 );
+    struct VideoSharedMemory* shared_memory = (struct VideoSharedMemory*)mmap( 0, size, PROT_READ, MAP_SHARED, fd, 0 );
+    close( fd );
 
     // initialize our sequence numbers in the ring buffer
-    size_t seq = -1;
+    size_t last_frame_index = -1;
 
     struct timespec tss;
     tss.tv_sec = 0;
@@ -51,16 +35,16 @@ consumerLoop()
     while( 1 )
     {
         // while there is data to consume
-        while( seq != rb->_wseq )
+        while( last_frame_index != shared_memory->_last_frame_index )
         {
-        	seq = rb->_wseq;
+        	last_frame_index = shared_memory->_last_frame_index;
         	
-        	struct Frame* frm = &rb->_buffer[seq];
+        	struct VideoFrame* video_frame = shared_memory->_frames + last_frame_index;
 
         	printf("Content-Type: image/jpeg\n\n");
 //         	printf("X-FastCam-Seq: %d\n\n", seq);
         	
-        	fwrite(frm->_data, 1, frm->_length, stdout);
+        	fwrite(video_frame->_data, 1, video_frame->_length, stdout);
         	
         	printf("\n--endofsection\n");
         }

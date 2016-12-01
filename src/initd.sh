@@ -15,11 +15,12 @@
 case "$1" in 
     start)
         echo "Starting fastcam"
-        fastcam_producer &
+        fastcam_audio_producer &
+        fastcam_video_producer &
         ;;
     stop)
         echo "Stopping fastcam"
-        killall fastcam_producer
+        sudo killall --signal KILL -r fastcam
         ;;
     *)
         echo "Usage: sudo service fastcam start|stop"

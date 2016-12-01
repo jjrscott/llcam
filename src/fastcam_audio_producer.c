@@ -1,52 +1,40 @@
 /* 
-  A Minimal Capture Program
+ * File:   buffer_demo.c
+ * Author: Tasanakorn
+ *
+ * Created on May 22, 2013, 1:52 PM
+ */
 
-  This program opens an audio interface for capture, configures it for
-  stereo, 16 bit, 44.1kHz, interleaved conventional read/write
-  access. Then its reads a chunk of random data from it, and exits. It
-  isn't meant to be a real program.
-
-  From on Paul David's tutorial : http://equalarea.com/paul/alsa-audio.html
-
-  Fixes rate and buffer problems
-
-  sudo apt-get install libasound2-dev
-  gcc -o alsa-record-example -lasound alsa-record-example.c && ./alsa-record-example hw:0
-*/
-
-#include <stdio.h>
-#include <stdlib.h>
+#include "fastcam_common.h"
 #include <alsa/asoundlib.h>
-#include <pthread.h>
-#include <stdint.h>
-#include <asm/byteorder.h>
 
-struct AuFile {
-   uint8_t magic[4];       /* magic number */
-   uint32_t hdr_size;    /* size of this header */
-   uint32_t data_size;   /* length of data (optional) */
-   uint32_t encoding;    /* data encoding format */
-   uint32_t sample_rate; /* samples per second */
-   uint32_t channels;    /* number of interleaved channels */
-   uint8_t data[];
-};
+int main(int argc, char** argv) {
 
+    int size = sizeof( struct AudioSharedMemory );
+    umask(0);
+    int fd = shm_open( AUDIO_SHARED_MEMORY_IDENTIFIER, O_RDWR | O_CREAT, 0666 );
+    ftruncate( fd, size+1 );
 
-void main (int argc, char *argv[])
-{
+    // create shared memory area
+    struct AudioSharedMemory* shared_memory = (struct AudioSharedMemory*)mmap( 0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0 );
+    close( fd );
+
+	shared_memory->_last_frame_index = -1;
+
   int i;
   int err;
   struct AuFile *buffer;
-  int buffer_frames = 4410;
   unsigned int rate = 44100;
   unsigned int channels = 1;
   snd_pcm_t *capture_handle;
   snd_pcm_hw_params_t *hw_params;
-  snd_pcm_format_t format = SND_PCM_FORMAT_S16_BE;
+	snd_pcm_format_t format = SND_PCM_FORMAT_S16_BE;
+	
+  char * name = "plughw:1";
 
-  if ((err = snd_pcm_open (&capture_handle, argv[1], SND_PCM_STREAM_CAPTURE, 0)) < 0) {
+  if ((err = snd_pcm_open (&capture_handle, name, SND_PCM_STREAM_CAPTURE, 0)) < 0) {
     fprintf (stderr, "cannot open audio device %s (%s)\n", 
-             argv[1],
+             name,
              snd_strerror (err));
     exit (1);
   }
@@ -120,43 +108,41 @@ void main (int argc, char *argv[])
   }
 
   fprintf(stdout, "audio interface prepared\n");
-
-  unsigned int buffer_length = buffer_frames * snd_pcm_format_width(format) / 8 * channels;
-
-  buffer = malloc(sizeof(struct AuFile) + buffer_length);
-
-  fprintf(stdout, "buffer allocated\n");
   
-  FILE *fp;
-  fp = fopen(argv[2], "w");
+  shared_memory->channels = channels;
+	shared_memory->samples_per_second = rate;
+	shared_memory->bits_per_sample = snd_pcm_format_width(format);
   
-   buffer->magic[0] ='.';       /* magic number */
-   buffer->magic[1] ='s';       /* magic number */
-   buffer->magic[2] ='n';       /* magic number */
-   buffer->magic[3] ='d';       /* magic number */
-   buffer->hdr_size = __cpu_to_be32(24);    /* size of this header */
-   buffer->data_size = __cpu_to_be32(buffer_length);   /* length of data (optional) */
-   buffer->encoding = __cpu_to_be32(3);    /* data encoding format */
-   buffer->sample_rate = __cpu_to_be32(rate); /* samples per second */
-   buffer->channels = __cpu_to_be32(channels);    /* number of interleaved channels */
 
-  for (i = 0; i < 1; ++i) {
-    if ((err = snd_pcm_readi (capture_handle, buffer->data, buffer_frames)) != buffer_frames) {
+   int buffer_frames = AUDIO_FRAME_DATA_SIZE * 8 / snd_pcm_format_width(format) / channels;
+
+  fprintf(stdout, "snd_pcm_format_width: %d\n", snd_pcm_format_width(format));
+  fprintf(stdout, "buffer_frames: %d\n", buffer_frames);
+
+   while (1) {
+   	size_t frame_index = (shared_memory->_last_frame_index + 1) % AUDIO_FRAME_COUNT;
+	
+    struct AudioFrame* audio_frame = shared_memory->_frames + frame_index;
+	audio_frame->_length = AUDIO_FRAME_DATA_SIZE;
+   
+    if ((err = snd_pcm_readi (capture_handle, audio_frame->_data, buffer_frames)) != buffer_frames) {
       fprintf (stderr, "read from audio interface failed (%s)\n",
                err, snd_strerror (err));
       exit (1);
     }
-    fwrite(buffer->data, 1, buffer_length, fp);
-    fprintf(stdout, "read %d done (%d)\n", i, err);
+    
+    shared_memory->_last_frame_index = frame_index;
+    
+//     fprintf(stdout, "frame index %d\n", frame_index);
+    
+    
+// 	usleep(1000);
   }
 
-  fclose(fp);
-  free(buffer);
+//   free(buffer);
 
   fprintf(stdout, "buffer freed\n");
 	
   snd_pcm_close (capture_handle);
   fprintf(stdout, "audio interface closed\n");
-
-  exit (0);
 }
