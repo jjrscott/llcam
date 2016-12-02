@@ -13,7 +13,7 @@ struct WAVFileHeader {
 	uint32_t bytes_per_second;
 	uint16_t block_align;
 	uint16_t bits_per_sample;
-	char _opaque1[8var \2 : \1!];
+	char _opaque1[8];
 };
 
 struct AUFileHeader {

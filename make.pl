@@ -7,6 +7,7 @@ foreach my $command (<DATA>)
 
 
 __DATA__
+mkdir build
 gcc -o build/llcam_audio_producer src/llcam_audio_producer.c -I/opt/vc/include -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/mmal/ -lmmal -L/opt/vc/lib/ -lmmal_core -lmmal_util -lvcos -lpthread -lbcm_host -lrt -I/usr/include/dssi -lasound
 gcc -o build/llcam_video_producer src/llcam_video_producer.c -I/opt/vc/include -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/mmal/ -lmmal -L/opt/vc/lib/ -lmmal_core -lmmal_util -lvcos -lpthread -lbcm_host -lrt -I/usr/include/dssi -lasound
 gcc -o build/llcam_audio_consumer src/llcam_audio_consumer.c -lrt
